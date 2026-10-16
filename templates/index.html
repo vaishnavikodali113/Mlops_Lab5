@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CIFAR-10 Image Classifier</title>
+  <meta name="description" content="Upload an image and let the CNN classify it into one of 10 CIFAR-10 categories instantly." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0f1a;
+      --surface: rgba(255,255,255,0.04);
+      --surface-hover: rgba(255,255,255,0.08);
+      --border: rgba(255,255,255,0.10);
+      --accent: #6c63ff;
+      --accent2: #a78bfa;
+      --accent3: #38bdf8;
+      --text: #f0f0ff;
+      --muted: #8b8fa8;
+      --success: #34d399;
+      --error: #f87171;
+      --radius: 18px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px 60px;
+    }
+
+    /* Animated background orbs */
+    body::before, body::after {
+      content: '';
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    body::before {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(108,99,255,0.15) 0%, transparent 70%);
+      top: -100px; left: -100px;
+      animation: drift 12s ease-in-out infinite alternate;
+    }
+    body::after {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, rgba(56,189,248,0.12) 0%, transparent 70%);
+      bottom: -80px; right: -80px;
+      animation: drift 15s ease-in-out infinite alternate-reverse;
+    }
+    @keyframes drift { from { transform: translate(0,0); } to { transform: translate(40px, 30px); } }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 680px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* Header */
+    header { text-align: center; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(108,99,255,0.15);
+      border: 1px solid rgba(108,99,255,0.35);
+      border-radius: 100px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent2);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .badge span { width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:.5;transform:scale(1.4);} }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 2.8rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #fff 30%, var(--accent2) 70%, var(--accent3) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.15;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    /* Classes pills */
+    .classes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      padding: 12px 0;
+    }
+    .pill {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 100px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      text-transform: capitalize;
+    }
+
+    /* Upload card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      backdrop-filter: blur(12px);
+    }
+
+    #drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      position: relative;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(108,99,255,0.07);
+    }
+    #drop-zone.drag-over { transform: scale(1.01); }
+
+    #drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    }
+
+    .upload-icon {
+      font-size: 48px;
+      margin-bottom: 14px;
+      display: block;
+      filter: drop-shadow(0 0 12px rgba(108,99,255,0.5));
+      transition: transform 0.3s ease;
+    }
+    #drop-zone:hover .upload-icon { transform: translateY(-4px); }
+
+    .upload-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .upload-hint { font-size: 13px; color: var(--muted); }
+
+    /* Preview */
+    #preview-wrap {
+      display: none;
+      margin-top: 20px;
+      text-align: center;
+    }
+    #preview-wrap img {
+      max-width: 200px;
+      max-height: 200px;
+      border-radius: 12px;
+      border: 2px solid var(--border);
+      object-fit: cover;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .preview-name {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    /* Button */
+    #predict-btn {
+      margin-top: 24px;
+      width: 100%;
+      padding: 15px 24px;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), #9b5de5);
+      color: #fff;
+      letter-spacing: 0.02em;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    #predict-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(108,99,255,0.45);
+    }
+    #predict-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    #predict-btn .btn-content { display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Result card */
+    #result {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      backdrop-filter: blur(12px);
+      animation: fadeUp 0.4s ease;
+    }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+
+    .result-top {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .result-emoji { font-size: 44px; line-height: 1; }
+    .result-label {
+      font-size: 26px;
+      font-weight: 800;
+      text-transform: capitalize;
+      background: linear-gradient(135deg, var(--text), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .result-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+    .bar-section { margin-top: 4px; }
+    .bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+    .bar-label span:last-child { color: var(--accent2); font-weight: 700; }
+    .bar-track {
+      height: 8px;
+      border-radius: 100px;
+      background: rgba(255,255,255,0.07);
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 100px;
+      background: linear-gradient(90deg, var(--accent), var(--accent3));
+      transition: width 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+      width: 0%;
+    }
+
+    /* Top-3 */
+    .top3-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 20px 0 12px;
+    }
+    .top3-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    .top3-item:first-child { border-color: rgba(108,99,255,0.4); }
+    .top3-rank { font-size: 11px; font-weight: 700; color: var(--muted); width: 20px; }
+    .top3-name { font-size: 14px; font-weight: 600; text-transform: capitalize; flex: 1; }
+    .top3-pct { font-size: 13px; font-weight: 700; color: var(--accent2); }
+
+    /* Error */
+    #error-box {
+      display: none;
+      padding: 14px 18px;
+      border-radius: 12px;
+      background: rgba(248,113,113,0.1);
+      border: 1px solid rgba(248,113,113,0.3);
+      color: var(--error);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    /* Footer */
+    footer {
+      position: relative;
+      z-index: 1;
+      margin-top: 8px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge"><span></span> Live Inference</div>
+      <h1>CIFAR-10 Image Classifier</h1>
+      <p class="subtitle">Upload any image and our CNN will classify it into one of 10 categories in real-time.</p>
+      <div class="classes" id="classes-list"></div>
+    </header>
+
+    <div class="card">
+      <div id="drop-zone">
+        <input type="file" id="file-input" accept="image/*" />
+        <span class="upload-icon">🖼️</span>
+        <p class="upload-title">Drop an image here or click to browse</p>
+        <p class="upload-hint">Supports JPG, PNG, WEBP — any resolution</p>
+      </div>
+
+      <div id="preview-wrap">
+        <img id="preview-img" src="" alt="Preview" />
+        <p class="preview-name" id="preview-name"></p>
+      </div>
+
+      <button id="predict-btn" disabled>
+        <span class="btn-content">
+          <div class="spinner" id="spinner"></div>
+          <span id="btn-text">Select an image first</span>
+        </span>
+      </button>
+    </div>
+
+    <div id="error-box"></div>
+
+    <div id="result">
+      <div class="result-top">
+        <span class="result-emoji" id="res-emoji">🤔</span>
+        <div>
+          <div class="result-label" id="res-label">—</div>
+          <div class="result-sub">Top prediction</div>
+        </div>
+      </div>
+
+      <div class="bar-section">
+        <div class="bar-label">
+          <span>Confidence</span>
+          <span id="res-pct">0%</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" id="res-bar"></div></div>
+      </div>
+
+      <p class="top3-title">Top 3 Predictions</p>
+      <div id="top3-list"></div>
+    </div>
+  </div>
+
+  <footer>Built with Flask · TensorFlow · DVC · Docker · GitHub Actions · EC2</footer>
+
+  <script>
+    const EMOJIS = {
+      airplane:"✈️", automobile:"🚗", bird:"🐦", cat:"🐱",
+      deer:"🦌", dog:"🐶", frog:"🐸", horse:"🐴", ship:"🚢", truck:"🚚",
+    };
+    const CLASSES = Object.keys(EMOJIS);
+
+    // Render class pills
+    const classesEl = document.getElementById("classes-list");
+    CLASSES.forEach(c => {
+      const p = document.createElement("span");
+      p.className = "pill";
+      p.textContent = EMOJIS[c] + " " + c;
+      classesEl.appendChild(p);
+    });
+
+    const dropZone    = document.getElementById("drop-zone");
+    const fileInput   = document.getElementById("file-input");
+    const previewWrap = document.getElementById("preview-wrap");
+    const previewImg  = document.getElementById("preview-img");
+    const previewName = document.getElementById("preview-name");
+    const predictBtn  = document.getElementById("predict-btn");
+    const btnText     = document.getElementById("btn-text");
+    const spinner     = document.getElementById("spinner");
+    const errorBox    = document.getElementById("error-box");
+    const resultEl    = document.getElementById("result");
+
+    let selectedFile = null;
+
+    // Drag & drop
+    dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+    dropZone.addEventListener("drop", e => {
+      e.preventDefault();
+      dropZone.classList.remove("drag-over");
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith("image/")) loadFile(file);
+    });
+
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files[0]) loadFile(fileInput.files[0]);
+    });
+
+    function loadFile(file) {
+      selectedFile = file;
+      const url = URL.createObjectURL(file);
+      previewImg.src = url;
+      previewName.textContent = file.name;
+      previewWrap.style.display = "block";
+      predictBtn.disabled = false;
+      btnText.textContent = "Classify Image";
+      resultEl.style.display = "none";
+      errorBox.style.display = "none";
+    }
+
+    predictBtn.addEventListener("click", async () => {
+      if (!selectedFile) return;
+      setLoading(true);
+      errorBox.style.display = "none";
+      resultEl.style.display = "none";
+
+      const fd = new FormData();
+      fd.append("file", selectedFile);
+
+      try {
+        const res = await fetch("/predict", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || "Server error");
+        showResult(data);
+      } catch (err) {
+        errorBox.textContent = "⚠️  " + err.message;
+        errorBox.style.display = "block";
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    function setLoading(on) {
+      predictBtn.disabled = on;
+      spinner.style.display = on ? "block" : "none";
+      btnText.textContent = on ? "Classifying…" : "Classify Image";
+    }
+
+    function showResult(data) {
+      document.getElementById("res-emoji").textContent = EMOJIS[data.label] || "🤔";
+      document.getElementById("res-label").textContent = data.label;
+      const pct = Math.round(data.confidence * 100);
+      document.getElementById("res-pct").textContent = pct + "%";
+      resultEl.style.display = "block";
+      // Animate bar
+      setTimeout(() => { document.getElementById("res-bar").style.width = pct + "%"; }, 50);
+
+      // Top-3
+      const listEl = document.getElementById("top3-list");
+      listEl.innerHTML = "";
+      (data.top3 || [{ label: data.label, confidence: data.confidence }]).forEach((item, i) => {
+        const d = document.createElement("div");
+        d.className = "top3-item";
+        d.innerHTML = `
+          <span class="top3-rank">#${i+1}</span>
+          <span>${EMOJIS[item.label] || "❓"}</span>
+          <span class="top3-name">${item.label}</span>
+          <span class="top3-pct">${Math.round(item.confidence*100)}%</span>`;
+        listEl.appendChild(d);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+stages:
+  prepare:
+    cmd: python src/prepare.py
+    deps:
+      - src/prepare.py
+    outs:
+      - data/processed
+
+  train:
+    cmd: python src/train.py
+    deps:
+      - src/train.py
+      - data/processed
+    params:
+      - train.epochs
+      - train.batch_size
+    outs:
+      - models/model.keras
+
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+      - src/evaluate.py
+      - models/model.keras
+      - data/processed
+    metrics:
+      - metrics.json:
+          cache: false

@@ -1,0 +1,10 @@
+# Local macOS (Apple Silicon) development requirements
+# Do NOT use this file in Docker or CI — use requirements.txt there.
+tensorflow-macos
+tensorflow-metal
+flask==3.0.3
+gunicorn==22.0.0
+pillow==10.3.0
+numpy
+pyyaml
+dvc[s3]==3.50.0

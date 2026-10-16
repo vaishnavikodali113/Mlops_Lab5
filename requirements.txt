@@ -1,0 +1,12 @@
+# ── Local development (Apple Silicon / macOS arm64) ─────────────────────────
+# Use these instead of tensorflow-cpu on M-series Macs:
+#   pip install tensorflow-macos tensorflow-metal
+#
+# ── Linux / CI / Docker (x86_64) ─────────────────────────────────────────────
+tensorflow-cpu==2.15.0
+flask==3.0.3
+gunicorn==22.0.0
+pillow==10.3.0
+numpy==1.26.4
+pyyaml
+dvc[s3]==3.50.0

@@ -1,0 +1,9 @@
+.git
+.dvc
+data
+venv
+__pycache__
+*.npz
+*.pyc
+.env
+screenshots
